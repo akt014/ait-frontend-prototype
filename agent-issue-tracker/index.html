@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Agent Issue Tracker — lightweight issue tracking for human and AI workflows.">
+  <title>Agent Issue Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header" role="banner">
+    <div class="site-header__inner">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">◇</span>
+        <div>
+          <h1 class="brand__title">Agent Issue Tracker</h1>
+          <p class="brand__tagline">Plan at AI speed — issues for humans and agents</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn btn--ghost" id="btn-export" aria-describedby="export-hint">
+          Export JSON
+        </button>
+        <label class="sr-only" for="import-file">Import issues from JSON file</label>
+        <input type="file" id="import-file" class="visually-hidden" accept="application/json,.json" tabindex="-1">
+        <button type="button" class="btn btn--ghost" id="btn-import-trigger">Import JSON</button>
+        <button type="button" class="btn btn--primary" id="btn-new-issue">New issue</button>
+      </div>
+    </div>
+    <p id="export-hint" class="sr-only">Downloads all issues as a JSON file for backups or agent ingestion.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" aria-label="Filters and budget">
+      <section class="panel" aria-labelledby="budget-heading">
+        <h2 id="budget-heading" class="panel__title">Token budget</h2>
+        <p class="panel__help">Rolling estimate vs. a soft cap you set (local only).</p>
+        <label class="field">
+          <span class="field__label">Monthly cap (estimated tokens)</span>
+          <input type="number" id="budget-cap" class="input" min="0" step="1000" value="500000" inputmode="numeric" aria-describedby="budget-cap-desc">
+        </label>
+        <p id="budget-cap-desc" class="field__hint">Open issues with estimates sum toward this bar.</p>
+        <div class="budget-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="No usage data" id="budget-meter">
+          <span id="budget-meter-label" class="budget-meter__label">0% of cap used</span>
+          <div class="budget-meter__track">
+            <div class="budget-meter__fill" id="budget-meter-fill"></div>
+          </div>
+        </div>
+        <dl class="stat-row">
+          <div>
+            <dt>Estimated (open)</dt>
+            <dd id="stat-estimated">0</dd>
+          </div>
+          <div>
+            <dt>Open issues</dt>
+            <dd id="stat-open">0</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="filter-heading">
+        <h2 id="filter-heading" class="panel__title">Filters</h2>
+        <label class="field">
+          <span class="field__label">Search</span>
+          <input type="search" id="filter-search" class="input" placeholder="Title, description, labels…" autocomplete="off" aria-controls="issue-list">
+        </label>
+        <fieldset class="fieldset">
+          <legend class="fieldset__legend">Status</legend>
+          <div class="chip-group" id="filter-status"></div>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset__legend">Priority</legend>
+          <div class="chip-group" id="filter-priority"></div>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset__legend">Audience</legend>
+          <div class="chip-group" id="filter-audience"></div>
+        </fieldset>
+        <label class="field">
+          <span class="field__label">Sort by</span>
+          <select id="filter-sort" class="select">
+            <option value="updated-desc">Recently updated</option>
+            <option value="priority-asc">Priority (P0 first)</option>
+            <option value="created-desc">Newest</option>
+            <option value="tokens-desc">Highest token estimate</option>
+          </select>
+        </label>
+        <button type="button" class="btn btn--ghost btn--full" id="btn-clear-filters">Clear filters</button>
+      </section>
+    </aside>
+
+    <main id="main" class="main" tabindex="-1">
+      <div class="main__toolbar">
+        <p class="results-count" id="results-count" aria-live="polite">0 issues</p>
+        <div class="view-toggle" role="group" aria-label="View density">
+          <button type="button" class="segmented__btn is-active" data-density="comfortable" aria-pressed="true">Comfortable</button>
+          <button type="button" class="segmented__btn" data-density="compact" aria-pressed="false">Compact</button>
+        </div>
+      </div>
+
+      <ul class="issue-list" id="issue-list" aria-label="Issues"></ul>
+      <div class="empty-state" id="empty-state" hidden>
+        <p class="empty-state__title">No issues match</p>
+        <p class="empty-state__text">Try clearing filters or create a new issue.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: create / edit -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" id="modal">
+      <header class="modal__header">
+        <h2 id="modal-title" class="modal__title">New issue</h2>
+        <button type="button" class="icon-btn" id="modal-close" aria-label="Close dialog">
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <form id="issue-form" class="modal__body">
+        <input type="hidden" id="issue-id" name="id" value="">
+        <label class="field">
+          <span class="field__label">Title <span class="req" aria-hidden="true">*</span></span>
+          <input type="text" id="issue-title" name="title" class="input" required maxlength="200" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="field__label">Description</span>
+          <textarea id="issue-description" name="description" class="textarea" rows="5" maxlength="8000" placeholder="Context, acceptance criteria, links…"></textarea>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Status</span>
+            <select id="issue-status" name="status" class="select"></select>
+          </label>
+          <label class="field">
+            <span class="field__label">Priority</span>
+            <select id="issue-priority" name="priority" class="select"></select>
+          </label>
+          <label class="field">
+            <span class="field__label">Primary audience</span>
+            <select id="issue-audience" name="audience" class="select"></select>
+          </label>
+          <label class="field">
+            <span class="field__label">Est. tokens</span>
+            <input type="number" id="issue-tokens" name="estimatedTokens" class="input" min="0" step="100" value="0" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span class="field__label">Time budget (min)</span>
+            <input type="number" id="issue-time" name="timeBudgetMin" class="input" min="0" step="5" value="0" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span class="field__label">Labels</span>
+            <input type="text" id="issue-labels" name="labels" class="input" placeholder="comma, separated" autocomplete="off">
+          </label>
+        </div>
+        <p class="form-note" id="agent-note">Agent-friendly view: use Export JSON for machine-readable batches.</p>
+        <footer class="modal__footer">
+          <button type="button" class="btn btn--ghost" id="btn-delete-issue" hidden>Delete</button>
+          <div class="modal__footer-spacer"></div>
+          <button type="button" class="btn btn--ghost" id="btn-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="btn-save">Save issue</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-region" aria-live="assertive" aria-atomic="true" id="toast-region"></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
